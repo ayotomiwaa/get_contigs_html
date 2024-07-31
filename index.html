@@ -74,6 +74,18 @@
             border-bottom: 1px solid #ddd;
             padding-bottom: 10px;
         }
+        .button-group {
+            margin-top: 15px;
+        }
+        .button-group button {
+            margin-right: 10px;
+        }
+        #exampleButton {
+            background-color: #008CBA;
+        }
+        #exampleButton:hover {
+            background-color: #007B9A;
+        }
     </style>
 </head>
 <body>
@@ -84,9 +96,12 @@
             <input type="text" id="sra" name="sra" required placeholder="e.g., DRR000001">
 
             <label for="contig">Enter Contig IDs (comma-separated):</label>
-            <input type="text" id="contig" name="'contig" required placeholder="e.g., DRR000001_1, DRR000001_2, ...">
+            <input type="text" id="contig" name="'contig" required placeholder="e.g., DRR000001_1, DR000001_2, ...">
+            <div class = "button-group">
+                <button type="submit">Retrieve Contigs</button>
+                <button type="button" id="exampleButton">Load Example</button>
+            </div>
 
-            <button type="submit">Retrieve Contigs</button>
         </form>
         <div id="results">
             <h2>Results</h2>
@@ -100,6 +115,12 @@
 
     <script>
         document.getElementById('contigForm').addEventListener('submit', retrieveContigs);
+        document.getElementById("exampleButton").addEventListener('click', loadExample);
+
+        function loadExample() {
+            document.getElementById('sra').value = 'DRR000001';
+            document.getElementById('contig').value = "DRR000001_1, DR000001_2";
+        }
 
         async function retrieveContigs(event) {
             event.preventDefault();
