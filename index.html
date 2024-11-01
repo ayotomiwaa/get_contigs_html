@@ -54,6 +54,11 @@
             max-height: 400px;
             overflow-y: auto;
         }
+        textarea {
+            width: 100%;
+            min-height: 100px;
+            margin: 10px 0;
+        }
         /* #results {
             width: 100%;
             height: 300px;
@@ -63,7 +68,12 @@
             margin-top: 20px;
         } */
         .error {
-            color: red;
+            color: #dc3545;
+            margin: 10px 0;
+        }
+        .success {
+            color: #28a745;
+            margin: 10px 0;
         }
         .loading {
             color: #666;
@@ -91,111 +101,98 @@
 <body>
     <div class="container">
         <h1>Retrieve Contigs</h1>
-        <form id="contigForm">
-            <label for="sra">Enter SRA:</label>
-            <input type="text" id="sra" name="sra" required placeholder="e.g., DRR000001">
+        <div>
 
-            <label for="contig">Enter Contig IDs (comma-separated):</label>
-            <input type="text" id="contig" name="'contig" required placeholder="e.g., DRR000001_1, DRR000001_2, ...">
-            <div class = "button-group">
-                <button type="submit">Retrieve Contigs</button>
-                <button type="button" id="exampleButton">Load Example</button>
-            </div>
+            <label for="contigIds">Enter Contig IDs (format: sra_contigId, comma-separated):</label>
+            <textarea id="contigIds" placeholder="e.g., DRR000001_1, DRR000001_2, ..."></textarea>
+        </div>    
+            
+        <div class = "button-group">
+            <button onclick="retrieveContigs()">Retrieve Contigs</button>
+            <button onclick="loadExample()">Load Example</button>
+        </div>
 
-        </form>
         <div id="results">
             <h2>Results</h2>
-            <p>Retrieved contigs will appear here.</p>
+            <div id="output">Retrieved contigs will appear here.</div>
         </div>
     </div>
+
     <footer>
         <p>&copy; 2024 Extract Contigs</p>
     </footer>
 
-
     <script>
-        document.getElementById('contigForm').addEventListener('submit', retrieveContigs);
-        document.getElementById("exampleButton").addEventListener('click', loadExample);
-
-        function loadExample() {
-            document.getElementById('sra').value = 'DRR000001';
-            document.getElementById('contig').value = "DRR000001_1, DRR000001_2";
+        function displayResults(fastaText) {
+            const outputDiv = document.getElementById('output');
+            outputDiv.innerHTML = `<div class="fasta-sequence">${fastaText}</div>`;
         }
 
-        async function retrieveContigs(event) {
-            event.preventDefault();
-            const sra = document.getElementById('sra').value.trim();
-            const contig = document.getElementById('contig').value.trim();
-            const resultsDiv = document.getElementById('results');
-
-            if (!sra || !contig) {
-                resultsDiv.innerHTML = '<p class="error">Please enter both SRA and Contig IDs.</p>';
-                // resultsDiv.innerHTML = '<p class="error">Please enter an SRA accession number.</p>';
-                return;
-            }
-
-            resultsDiv.innerHTML = '<p class="loading">Loading... Please wait.</p>';
-
+        async function retrieveContigs() {
+            const contigIdsInput = document.getElementById('contigIds').value.trim();
+            const outputDiv = document.getElementById('output');
+            
+            // Show loading state
+            outputDiv.innerHTML = '<div class="loading">Retrieving FASTA sequences...</div>';
+            
             try {
-                const response = await fetch("https://ag63ar36qwfndxxfc32b3w57oy0wcugc.lambda-url.us-east-1.on.aws/", {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer 20240522',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ SRA: sra, contig: contig.split(',').map(c => c.trim()) })
-                    // body: JSON.stringify({ SELECT: `* FROM sra WHERE acc = '${sra}' LIMIT 1` })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                // Split the input by commas and trim whitespace
+                const contigIdsList = contigIdsInput.split(',').map(id => id.trim()).filter(id => id);
+                
+                if (contigIdsList.length === 0) {
+                    throw new Error('Please enter at least one contig ID');
                 }
 
-                const data = await response.text();
-                displayResults(data);
+                // Group contigs by SRA
+                const contigsBySRA = {};
+                contigIdsList.forEach(contigId => {
+                    const parts = contigId.split('_');
+                    if (parts.length < 2) {
+                        throw new Error(`Invalid format for "${contigId}". Expected format: sra_contigId`);
+                    }
+                    const sra = parts[0];
+                    if (!contigsBySRA[sra]) {
+                        contigsBySRA[sra] = [];
+                    }
+                    contigsBySRA[sra].push(contigId);
+                });
+
+                // Make API calls for each SRA group
+                let allResults = '';
+                for (const [sra, contigs] of Object.entries(contigsBySRA)) {
+                    try {
+                        const response = await fetch("https://ag63ar36qwfndxxfc32b3w57oy0wcugc.lambda-url.us-east-1.on.aws/", {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': 'Bearer 20240522',
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                SRA: sra,
+                                contig: contigs
+                            })
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        const data = await response.text();
+                        allResults += data + '\n';
+                    } catch (error) {
+                        allResults += `Error retrieving contigs for SRA ${sra}: ${error.message}\n`;
+                    }
+                }
+
+                displayResults(allResults);
+
             } catch (error) {
-                console.error('Fetch error:', error);
-                resultsDiv.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                outputDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
             }
         }
 
-        function displayResults(data) {
-            const resultsDiv = document.getElementById('results');
-            resultsDiv.innerHTML = '<h2>Results</h2>';
-
-            if (data.trim() === '') {
-                resultsDiv.innerHTML += '<p>Search not found.</p>';
-                return;
-            }
-
-            const contigs = data.split('\n').filter(line => line.trim() !== '');
-
-            if (contigs.length === 0) {
-                resultsDiv.innerHTML += '<p>Search not found.</p>';
-                return; 
-            }
-
-            contigs.forEach(contig => {
-                const contigDiv = document.createElement('div');
-                contigDiv.className = 'contig-result';
-                contigDiv.textContent = contig;
-                resultsDiv.appendChild(contigDiv);
-            });
-            // const pre = document.createElement('pre');
-            // pre.textContent = data;
-            // resultsDiv.appendChild(pre);
-
-            // if (data.error) {
-            //     resultsDiv.innerHTML += `<p class="error">Error: ${data.error}</p>`;
-            // } else if (data.length > 0) {
-            //     data.forEach(row => {
-            //         const pre = document.createElement('pre');
-            //         pre.textContent = JSON.stringify(row, null, 2);
-            //         resultsDiv.appendChild(pre);
-            //     });
-            // } else {
-            //     resultsDiv.innerHTML += '<p>No contigs found!!!.</p>';
-            // }
+        function loadExample() {
+            document.getElementById('contigIds').value = 'ERR2756788_50, ERR2756788_2344, ERR2756789_50, ERR2756789_2344';
         }
     </script>
 </body>
